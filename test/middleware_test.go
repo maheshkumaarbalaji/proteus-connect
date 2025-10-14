@@ -2,11 +2,12 @@ package test
 
 import (
 	"testing"
+
 	"github.com/citadelofcode/proteus/internal"
 )
 
 // Test case to validate the working of middleware processing logic.
-func Test_MiddlewareProcessing(t * testing.T) {
+func Test_MiddlewareProcessing(t *testing.T) {
 	var MwWithStop = func(request *internal.HttpRequest, response *internal.HttpResponse, stop internal.StopFunction) {
 		request.Server.Log("MwWithStop has been invoked", internal.INFO_LEVEL)
 		stop()
@@ -16,12 +17,12 @@ func Test_MiddlewareProcessing(t * testing.T) {
 	}
 
 	testCases := []struct {
-		Name string
-		MW internal.Middleware
+		Name           string
+		MW             internal.Middleware
 		ExpProcessNext bool
-	} {
-		{ "Processing middleware with Stop Invocation", MwWithStop, false },
-		{ "Processing middleware without Stop Invocation", MwWithoutStop, true },
+	}{
+		{"Processing middleware with Stop Invocation", MwWithStop, false},
+		{"Processing middleware without Stop Invocation", MwWithoutStop, true},
 	}
 
 	testServer := NewTestServer(t)
