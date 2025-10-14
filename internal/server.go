@@ -27,14 +27,18 @@ type ConnectionWatcher struct {
 	connCount int
 }
 
-// Increases the connection count by the specified delta.
+// UpdateCount increases the connection count by the specified delta.
+// Used internally to track active connections in a thread-safe manner.
+// Positive delta adds connections, negative delta removes connections.
 func (cw *ConnectionWatcher) UpdateCount(delta int) {
 	cw.mu.Lock()
 	cw.connCount += delta
 	cw.mu.Unlock()
 }
 
-// Returns the connection count value for the ConnectionWatcher instance..
+// GetCount returns the current number of active connections.
+// Thread-safe method providing read-only access to connection count.
+// Returns the number of concurrent client connections to the server.
 func (cw *ConnectionWatcher) GetCount() int {
 	cw.mu.RLock()
 	count := cw.connCount
@@ -207,7 +211,7 @@ func (srv *HttpServer) handleClient(ClientConnection net.Conn) {
 	defer timer.Stop()
 
 	for {
-		timeout, err := handleRequest();
+		timeout, err := handleRequest()
 		_, ok := err.(*ReadTimeoutError)
 		if err != io.EOF && !ok {
 			if !timer.Stop() {
@@ -219,7 +223,7 @@ func (srv *HttpServer) handleClient(ClientConnection net.Conn) {
 
 		select {
 		case <-srv.shutdown:
-			srv.Log("Server shutdown initiated :: Closing client connection - " + ClientConnection.RemoteAddr().String(), WARN_LEVEL)
+			srv.Log("Server shutdown initiated :: Closing client connection - "+ClientConnection.RemoteAddr().String(), WARN_LEVEL)
 			return
 		case <-timer.C:
 			srv.Log(fmt.Sprintf("Client connection [%s] has timed out.", ClientConnection.RemoteAddr().String()), INFO_LEVEL)
@@ -233,7 +237,7 @@ func (srv *HttpServer) handleClient(ClientConnection net.Conn) {
 func (srv *HttpServer) getKeepAliveHeuristic(connCount int) (int, int) {
 	usableCPU := numCPU - 1
 	scalingFactor := 2.0
-	timeout := 15 / (1 + math.Exp(scalingFactor * float64(connCount - usableCPU)))
+	timeout := 15 / (1 + math.Exp(scalingFactor*float64(connCount-usableCPU)))
 	return int(math.Ceil(timeout)), 100
 }
 
@@ -241,7 +245,7 @@ func (srv *HttpServer) getKeepAliveHeuristic(connCount int) (int, int) {
 func (srv *HttpServer) terminate() {
 	srv.Log("Server shutdown signal received...", INFO_LEVEL)
 	terminateDone := make(chan struct{})
-	go func () {
+	go func() {
 		srv.Log("Server Shutdown :: All existing connections are being terminated.", WARN_LEVEL)
 		close(srv.shutdown)
 		srv.close()
@@ -310,7 +314,10 @@ func (srv *HttpServer) logStatus(request *HttpRequest, response *HttpResponse) {
 	}
 }
 
-// Creates and returns pointer to a new instance of HTTP request.
+// NewRequest creates and initializes a new HttpRequest for the given connection.
+// Sets up request with default values, client address, and server reference.
+// Called internally by the server for each incoming connection.
+// Returns pointer to the initialized HttpRequest instance.
 func (srv *HttpServer) NewRequest(Connection net.Conn) *HttpRequest {
 	var httpRequest HttpRequest
 	httpRequest.Initialize(Connection)
@@ -319,7 +326,10 @@ func (srv *HttpServer) NewRequest(Connection net.Conn) *HttpRequest {
 	return &httpRequest
 }
 
-// Creates and returns pointer to a new instance of HTTP response.
+// NewResponse creates and initializes a new HttpResponse for the given connection.
+// Sets up response with appropriate HTTP version, default headers, and server reference.
+// Called internally by the server for each request.
+// Returns pointer to the initialized HttpResponse instance.
 func (srv *HttpServer) NewResponse(Connection net.Conn, request *HttpRequest) *HttpResponse {
 	var httpResponse HttpResponse
 	httpResponse.Initialize(GetResponseVersion(request.Version), Connection)
@@ -327,12 +337,12 @@ func (srv *HttpServer) NewResponse(Connection net.Conn, request *HttpRequest) *H
 	return &httpResponse
 }
 
-// Sets the log configuration for the server instance.
-// Allowed options - COMMON (default), DEV, TINY, SHORT.
-//
-// If the option provided is not supported, then the default log format is configured for the server instance.
+// SetLogger configures the logging format for HTTP request processing logs.
+// Supports COMMON_LOGGER, DEV_LOGGER, TINY_LOGGER, and SHORT_LOGGER formats.
+// Defaults to COMMON_LOGGER if an unsupported format is provided.
+// Use to customize how requests and responses are logged to console.
 func (srv *HttpServer) SetLogger(logFormat string) {
-	allowedLogFormats := []string { COMMON_LOGGER, DEV_LOGGER, TINY_LOGGER, SHORT_LOGGER }
+	allowedLogFormats := []string{COMMON_LOGGER, DEV_LOGGER, TINY_LOGGER, SHORT_LOGGER}
 	if slices.Contains(allowedLogFormats, logFormat) {
 		srv.logFormat = logFormat
 		srv.Log(fmt.Sprintf("The request logging format has been set to '%s'.", logFormat), WARN_LEVEL)
@@ -342,13 +352,19 @@ func (srv *HttpServer) SetLogger(logFormat string) {
 	}
 }
 
-// Adds a server level middleware to the server instance.
+// Use registers a middleware function to execute for all incoming HTTP requests.
+// Server-level middleware runs before route-specific middleware and handlers.
+// Middleware functions execute in the order they were registered.
+// Use for authentication, logging, body parsing, CORS, etc.
 func (srv *HttpServer) Use(middleware Middleware) {
 	srv.middlewares = append(srv.middlewares, middleware)
 }
 
-// Setup the web server instance to listen for incoming HTTP requests at the given hostname and port number.
-func (srv * HttpServer) Listen() {
+// Listen starts the HTTP server and begins accepting connections.
+// Blocks until terminated by interrupt signal (Ctrl+C, SIGINT, SIGTERM).
+// Creates TCP listener, handles graceful shutdown, and manages connections.
+// Ensure HostAddress, PortNumber, and Router are configured before calling.
+func (srv *HttpServer) Listen() {
 	serverAddress := fmt.Sprintf("%s:%d", srv.HostAddress, srv.PortNumber)
 	server, err := net.Listen("tcp", serverAddress)
 	if err != nil {
@@ -374,7 +390,10 @@ func (srv * HttpServer) Listen() {
 	close(sigChan)
 }
 
-// Logs the given message and classification to the server log stream.
+// Log outputs a message to the server's log stream with specified log level.
+// Supports INFO_LEVEL, WARN_LEVEL (yellow), and ERROR_LEVEL (red) with colors.
+// Includes timestamp, server name, log level, and message in output.
+// Thread-safe method used for operational logging by server and applications.
 func (srv *HttpServer) Log(message string, level string) {
 	currentTime := GetRfc1123Time()
 	serverName := GetServerDefaults("server_name").(string)

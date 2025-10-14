@@ -82,7 +82,10 @@ const (
 	Status511 StatusCode = 511
 )
 
-// Gets the minified message assosciated with a HTTP status code.
+// GetStatusMessage retrieves the standard HTTP reason phrase for this status code.
+// Used internally by the response system to construct HTTP status lines like "HTTP/1.1 200 OK".
+// Returns the official reason phrase (e.g., "OK", "Not Found") for standard status codes.
+// Returns empty string for unrecognized status codes.
 func (code StatusCode) GetStatusMessage() string {
 	for _, stat := range ResponseStatusCodes {
 		if stat.Code == code {
@@ -93,7 +96,10 @@ func (code StatusCode) GetStatusMessage() string {
 	return ""
 }
 
-// Gets the default error content for a HTTP status code.
+// GetErrorContent generates a default HTML error page for HTTP error status codes.
+// Used when custom error handling is not implemented to provide standardized error pages.
+// Creates complete HTML document with status code, reason phrase, and error description.
+// Returns empty string if status code is not found in the registry.
 func (code StatusCode) GetErrorContent() string {
 	htmlTemplate := `<html>
 					<head>

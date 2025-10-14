@@ -1,0 +1,20 @@
+site_name: Documentation
+site_url: https://citadelofcode.github.io/proteus
+theme:
+  name: material
+docs_dir: docs
+nav:
+  - Home: index.md
+  - API Reference:
+      - File: File.md
+      - Functions: Functions.md
+      - Headers: Headers.md
+      - Http Request: HttpRequest.md
+      - Http Response: HttpResponse.md
+      - Http Server: HttpServer.md
+      - Middleware: Middleware.md
+      - Params: Params.md
+      - Router: Router.md
+      - Status Codes: StatusCodes.md
+repo_url: https://github.com/citadelofcode/proteus
+repo_name: proteus

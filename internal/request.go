@@ -43,7 +43,10 @@ type HttpRequest struct {
 	fs *FileSystem
 }
 
-// Initializes the instance of HttpRequest with default values for all its fields.
+// Initialize sets up HttpRequest with default values for reading HTTP data.
+// Creates empty collections, sets HTTP version to "0.9", initializes locals map.
+// Called internally during request creation from network connections.
+// Prepares request for parsing headers, body, and parameters using Read().
 func (req *HttpRequest) Initialize(reader io.Reader) {
 	req.BodyBytes = make([]byte, 0)
 	req.Headers = make(Headers)
@@ -58,7 +61,10 @@ func (req *HttpRequest) Initialize(reader io.Reader) {
 	req.fs = new(FileSystem)
 }
 
-// Reads bytes of data from request byte stream and stores it in individual fields of HttpRequest instance.
+// Read parses complete HTTP request from network stream into HttpRequest fields.
+// Parses request line, headers, query parameters, and body (if Content-Length present).
+// Handles HTTP/0.9, 1.0, and 1.1 formats with error handling for malformed requests.
+// Returns RequestParseError on parsing failures, nil on success.
 func (req *HttpRequest) Read() error {
 	err := req.readHeader()
 	if err != nil {
@@ -91,8 +97,10 @@ func (req *HttpRequest) Read() error {
 	return nil
 }
 
-// Gets the time elapsed since request processing started (in milliseconds).
-// If start time is not available, it returns zero.
+// ProcessingTime calculates time elapsed since request processing began in milliseconds.
+// Uses "Started" timestamp from req.Locals to measure elapsed time.
+// Used for performance monitoring, logging, and timeout detection.
+// Returns 0 if start time is unavailable or not set.
 func (req *HttpRequest) ProcessingTime() int64 {
 	Started := req.Locals["Started"].(time.Time)
 	if Started.IsZero() {
@@ -228,7 +236,10 @@ func (req *HttpRequest) parseQueryParams() error {
 	return nil
 }
 
-// Checks if the given HTTP GET request made is a CONDITIONAL GET request.
+// IsConditionalGet checks if this is a conditional GET request with "If-Modified-Since" header.
+// Compares file's modification time with the header date for caching optimization.
+// Returns true if file unchanged (send 304), false if file should be sent (200).
+// Used for bandwidth-efficient static file serving with proper cache validation.
 func (req *HttpRequest) IsConditionalGet(CompleteFilePath string) (bool, error) {
 	if !strings.EqualFold(req.Method, "GET") {
 		return false, nil
@@ -262,7 +273,10 @@ func (req *HttpRequest) IsConditionalGet(CompleteFilePath string) (bool, error) 
 	return true, nil
 }
 
-// Adds a new key-value pair to the request headers collection.
+// AddHeader adds a header key-value pair with key normalization and validation.
+// Normalizes keys to canonical MIME format and validates date header formats.
+// Logs errors for invalid date formats but continues processing.
+// Used during request parsing to build header collection.
 func (req *HttpRequest) AddHeader(HeaderKey string, HeaderValue string) {
 	if slices.Contains(DateHeaders, textproto.CanonicalMIMEHeaderKey(HeaderKey)) {
 		isValid, _ := IsHttpDate(HeaderValue)

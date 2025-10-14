@@ -1,8 +1,8 @@
 package internal
 
 import (
-	"strings"
 	"path/filepath"
+	"strings"
 )
 
 // Structure to contain information about a single route declared in the Router.
@@ -25,7 +25,11 @@ type Router struct {
 	fs *FileSystem
 }
 
-// Adds a new static route and target folder to the static routes collection.
+// Static registers a route to serve static files from specified filesystem directory.
+// Use to serve CSS, JS, images, and other assets with automatic MIME detection and caching.
+// Maps URL prefix to filesystem path with security validation and directory traversal protection.
+// Parameters: RoutePath (URL prefix), TargetPath (absolute filesystem directory).
+// Returns: error if target path invalid or inaccessible, nil on successful registration.
 func (rtr *Router) Static(RoutePath string, TargetPath string) error {
 	RoutePath = CleanRoute(RoutePath)
 	isAbsolute := rtr.fs.IsAbsolute(TargetPath)
@@ -47,55 +51,91 @@ func (rtr *Router) Static(RoutePath string, TargetPath string) error {
 	return nil
 }
 
-// Creates a new GET endpoint at the given route path and sets the handler function to be invoked when the route is requested by the user.
+// Get registers HTTP GET endpoint with handler and optional middleware for data retrieval.
+// Use for web pages, API endpoints, content serving with static/dynamic path support.
+// Supports path parameters (:id), wildcards (*), and middleware chain execution.
+// Parameters: RoutePath (URL pattern), handlerFunc (route handler), middlewareList (optional middleware).
+// Returns: error if route registration fails, nil on successful registration.
 func (rtr *Router) Get(RoutePath string, handlerFunc RouteHandler, middlewareList ...Middleware) error {
 	RoutePath = CleanRoute(RoutePath)
 	return rtr.addRoute("GET", RoutePath, handlerFunc, middlewareList)
 }
 
-// Creates a new HEAD endpoint at the given route path and sets the handler function to be invoked when the route is requested by the user.
+// Head registers HTTP HEAD endpoint for retrieving headers without body content.
+// Use for resource validation, metadata checking, and bandwidth-efficient probing.
+// Returns same headers as GET but no response body for efficient resource validation.
+// Parameters: RoutePath (URL pattern), handlerFunc (route handler), middlewareList (optional middleware).
+// Returns: error if route registration fails, nil on successful registration.
 func (rtr *Router) Head(RoutePath string, handlerFunc RouteHandler, middlewareList ...Middleware) error {
 	RoutePath = CleanRoute(RoutePath)
 	return rtr.addRoute("HEAD", RoutePath, handlerFunc, middlewareList)
 }
 
-// Creates a new POST endpoint at the given route path and sets the handler function to be invoked when the route is requested by the user.
+// Post registers HTTP POST endpoint for creating resources and processing form/JSON data.
+// Use for user creation, form submissions, file uploads, and API operations that modify state.
+// Supports body parsing middleware (JsonParser, UrlEncoded) for request data processing.
+// Parameters: RoutePath (URL pattern), handlerFunc (route handler), middlewareList (optional middleware).
+// Returns: error if route registration fails, nil on successful registration.
 func (rtr *Router) Post(RoutePath string, handlerFunc RouteHandler, middlewareList ...Middleware) error {
 	RoutePath = CleanRoute(RoutePath)
 	return rtr.addRoute("POST", RoutePath, handlerFunc, middlewareList)
 }
 
-// Creates a new PUT endpoint at the given route path and sets the handler function to be invoked when the route is requested by the user.
+// Put registers HTTP PUT endpoint for updating/replacing resources with idempotent operations.
+// Use for complete resource updates, configuration changes, and file uploads to specific URLs.
+// Idempotent behavior (safe to repeat), client specifies resource location unlike POST.
+// Parameters: RoutePath (URL pattern with ID), handlerFunc (route handler), middlewareList (optional middleware).
+// Returns: error if route registration fails, nil on successful registration.
 func (rtr *Router) Put(RoutePath string, handlerFunc RouteHandler, middlewareList ...Middleware) error {
 	RoutePath = CleanRoute(RoutePath)
 	return rtr.addRoute("PUT", RoutePath, handlerFunc, middlewareList)
 }
 
-// Creates a new DELETE endpoint at the given route path and sets the handler function to be invoked when the route is requested by the user.
+// Delete registers HTTP DELETE endpoint for removing resources permanently with idempotent behavior.
+// Use for resource deletion, cleanup operations, session logout, and administrative management.
+// Returns 204 No Content on success, handles non-existent resources gracefully.
+// Parameters: RoutePath (URL pattern with ID), handlerFunc (route handler), middlewareList (optional middleware).
+// Returns: error if route registration fails, nil on successful registration.
 func (rtr *Router) Delete(RoutePath string, handlerFunc RouteHandler, middlewareList ...Middleware) error {
 	RoutePath = CleanRoute(RoutePath)
 	return rtr.addRoute("DELETE", RoutePath, handlerFunc, middlewareList)
 }
 
-// Creates a new TRACE endpoint at the given route path and sets the handler function to be invoked when the route is requested by the user.
+// Trace registers HTTP TRACE endpoint for diagnostic loopback testing and request tracing.
+// Use for debugging HTTP request path, proxy behavior, and network diagnostics.
+// Echoes received request headers back to client for troubleshooting purposes.
+// Parameters: RoutePath (URL pattern), handlerFunc (route handler), middlewareList (optional middleware).
+// Returns: error if route registration fails, nil on successful registration.
 func (rtr *Router) Trace(RoutePath string, handlerFunc RouteHandler, middlewareList ...Middleware) error {
 	RoutePath = CleanRoute(RoutePath)
 	return rtr.addRoute("TRACE", RoutePath, handlerFunc, middlewareList)
 }
 
-// Creates a new OPTIONS endpoint at the given route path and sets the handler function to be invoked when the route is requested by the user.
+// Options registers HTTP OPTIONS endpoint for CORS preflight requests and method discovery.
+// Use for cross-origin API access, capability discovery, and browser preflight handling.
+// Sets CORS headers (Allow-Origin, Allow-Methods, Allow-Headers) for secure cross-origin requests.
+// Parameters: RoutePath (URL pattern), handlerFunc (route handler), middlewareList (optional middleware).
+// Returns: error if route registration fails, nil on successful registration.
 func (rtr *Router) Options(RoutePath string, handlerFunc RouteHandler, middlewareList ...Middleware) error {
 	RoutePath = CleanRoute(RoutePath)
 	return rtr.addRoute("OPTIONS", RoutePath, handlerFunc, middlewareList)
 }
 
-// Creates a new CONNECT endpoint at the given route path and sets the handler function to be invoked when the route is requested by the user.
+// Connect registers HTTP CONNECT endpoint for establishing tunnels through proxy servers.
+// Use for proxy connections, SSL tunneling, and WebSocket upgrade handling.
+// Typically used by proxy servers and clients requiring secure tunnel establishment.
+// Parameters: RoutePath (URL pattern), handlerFunc (route handler), middlewareList (optional middleware).
+// Returns: error if route registration fails, nil on successful registration.
 func (rtr *Router) Connect(RoutePath string, handlerFunc RouteHandler, middlewareList ...Middleware) error {
 	RoutePath = CleanRoute(RoutePath)
 	return rtr.addRoute("CONNECT", RoutePath, handlerFunc, middlewareList)
 }
 
-// Adds a new dynamic route and its associated handler function to the collection of routes defined in the router instance.
+// addRoute adds dynamic route with handler and middleware to router's prefix tree.
+// Use internally by HTTP method functions (Get, Post, etc.) to register routes.
+// Validates method, cleans path, creates route object, and inserts into prefix tree.
+// Parameters: Method (HTTP method), RoutePath (URL pattern), handlerFunc (handler), middlewareList (middleware).
+// Returns: error if route registration fails, nil on successful addition.
 func (rtr *Router) addRoute(Method string, RoutePath string, handlerFunc RouteHandler, middlewareList []Middleware) error {
 	RoutePath = CleanRoute(RoutePath)
 	Method = strings.TrimSpace(Method)
@@ -103,8 +143,8 @@ func (rtr *Router) addRoute(Method string, RoutePath string, handlerFunc RouteHa
 
 	routeObj := Route{
 		RouteHandler: handlerFunc,
-		Method: Method,
-		Middlewares: make([]Middleware, 0),
+		Method:       Method,
+		Middlewares:  make([]Middleware, 0),
 	}
 
 	routeObj.Middlewares = append(routeObj.Middlewares, middlewareList...)
@@ -112,7 +152,11 @@ func (rtr *Router) addRoute(Method string, RoutePath string, handlerFunc RouteHa
 	return nil
 }
 
-// Function that matches a given route with the route tree and fetches the matched route, uses this route to get the corresponding handler.
+// Match finds route handler for HTTP request by searching static files and dynamic patterns.
+// Use internally by server to locate appropriate handler for incoming requests.
+// Checks static routes first (GET/HEAD), then dynamic patterns with parameter extraction.
+// Parameter: request (HttpRequest with path and method to match).
+// Returns: *Route with handler and middleware, error if no match found.
 func (rtr *Router) Match(request *HttpRequest) (*Route, error) {
 	routePath := CleanRoute(request.ResourcePath)
 	if strings.EqualFold(request.Method, "GET") || strings.EqualFold(request.Method, "HEAD") {

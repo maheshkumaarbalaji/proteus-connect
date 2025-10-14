@@ -3,12 +3,12 @@ package internal
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net/textproto"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
-	"io"
 )
 
 // Structure to represent a HTTP response sent back by the server to the client.
@@ -33,7 +33,11 @@ type HttpResponse struct {
 	fs *FileSystem
 }
 
-// // Initializes the instance of HttpResponse with default values for all its fields.
+// Initialize sets up an HttpResponse instance with default values and prepares it for HTTP output.
+// Use for creating new response instances with proper HTTP version handling.
+// Sets HTTP version (defaults to "0.9"), creates header/locals collections, adds standard headers.
+// Parameters: version (HTTP version), writer (output destination).
+// Returns: Configured response ready for sending data.
 func (res *HttpResponse) Initialize(version string, writer io.Writer) {
 	version = strings.TrimSpace(version)
 	if version == "" {
@@ -71,7 +75,11 @@ func (res *HttpResponse) addResponseHeaders() {
 	}
 }
 
-// Writes bytes of data to response byte stream from the HttpResponse instance.
+// Write transmits the complete HTTP response (status, headers, body) to the client connection.
+// Use to send finalized response data to network writer with proper HTTP formatting.
+// Handles HTTP/0.9 (body only) and HTTP/1.0+ (full response) versions automatically.
+// Called internally by Send(), SendFile(), and SendError() methods.
+// Returns: error if transmission fails, nil on successful write and flush.
 func (res *HttpResponse) Write() error {
 	if res.writer == nil {
 		resErr := new(ResponseError)
@@ -210,7 +218,17 @@ func (res *HttpResponse) writeBody() error {
 	return nil
 }
 
-// Adds a new key-value pair to the request headers collection.
+// AddHeader adds a header key-value pair to response headers with validation and normalization.
+// Use to set HTTP headers like Content-Type, Cache-Control, or custom headers before sending.
+// Normalizes keys to canonical format, validates date headers, supports multiple values per key.
+// Parameters: HeaderKey (header name), HeaderValue (header value).
+// Returns: No return value, headers stored in response Headers collection.
+//
+// Common response headers:
+//   - Content-Type, Content-Length, Content-Encoding
+//   - Cache-Control, Expires, ETag, Last-Modified
+//   - Location (for redirects), Set-Cookie
+//   - Access-Control-* (for CORS)
 func (res *HttpResponse) AddHeader(HeaderKey string, HeaderValue string) {
 	if slices.Contains(DateHeaders, textproto.CanonicalMIMEHeaderKey(HeaderKey)) {
 		isValid, _ := IsHttpDate(HeaderValue)
@@ -224,13 +242,21 @@ func (res *HttpResponse) AddHeader(HeaderKey string, HeaderValue string) {
 	}
 }
 
-// Sets the status of the HTTP response instance.
+// Status sets the HTTP status code and message for this response.
+// Use to set response status before sending content (200 OK, 404 Not Found, 500 Error, etc.).
+// Configures both numeric code and text message for proper HTTP response line.
+// Parameter: status (StatusCode constant like Status200, Status404, Status500).
+// Returns: No return value, status stored in response for transmission.
 func (res *HttpResponse) Status(status StatusCode) {
 	res.StatusCode = int(status)
 	res.StatusMessage = status.GetStatusMessage()
 }
 
-// Send the given file from the local file system as the HTTP response.
+// SendFile transmits a file from filesystem as HTTP response with automatic headers and MIME detection.
+// Use to serve static files, downloads, or handle HEAD requests for file metadata.
+// Sets Content-Length, Last-Modified, and Content-Type headers automatically.
+// Parameters: CompleteFilePath (absolute path), OnlyMetadata (true for HEAD requests).
+// Returns: error on file access/transmission failure, nil on success.
 func (res *HttpResponse) SendFile(CompleteFilePath string, OnlyMetadata bool) error {
 	file, err := res.fs.GetFile(CompleteFilePath)
 	if err != nil {
@@ -255,7 +281,11 @@ func (res *HttpResponse) SendFile(CompleteFilePath string, OnlyMetadata bool) er
 	return res.Write()
 }
 
-// Sends a the given error content as response back to the client.
+// SendError transmits error content as HTTP response with proper error headers and content type.
+// Use to send error messages, HTML error pages, or JSON error responses to clients.
+// Sets appropriate Content-Type and Content-Length headers automatically.
+// Parameter: Content (error message or formatted content to send).
+// Returns: error on transmission failure, nil on successful error response.
 func (res *HttpResponse) SendError(Content string) error {
 	responseContent := []byte(Content)
 	res.Headers.Add("Content-Type", ERROR_MSG_CONTENT_TYPE)
@@ -264,7 +294,11 @@ func (res *HttpResponse) SendError(Content string) error {
 	return res.Write()
 }
 
-// Send the given string as response back to the client.
+// Send transmits string content as HTTP response body with automatic headers.
+// Use to send text, JSON, HTML, or other string-based content to clients.
+// Sets Content-Length automatically and uses default Content-Type if not specified.
+// Parameter: content (string data to send as response body).
+// Returns: error on transmission failure, nil on successful response.
 func (res *HttpResponse) Send(content string) error {
 	_, ok := res.Headers.Get("Content-Type")
 	if !ok {
